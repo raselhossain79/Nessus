@@ -242,6 +242,129 @@ sudo tail -f /opt/nessus/var/nessus/logs/nessusd.messages
 
 ---
 
+## ⚠️ Common Problem: "Nessus has no plugins. Therefore functionality is limited."
+
+This warning appears in **Settings** after installation. It means Nessus could not download its vulnerability plugin database from Tenable's servers.
+
+**Why it happens:**
+- Lab network is blocking outbound connections to `plugins.nessus.org`
+- Firewall or proxy restrictions on the machine
+- No internet access on that specific PC
+
+There are two ways to fix this:
+
+---
+
+### Fix Option 1 — Force Update via Command Line
+
+When the GUI **Settings → Update** does nothing, try forcing the update directly from terminal.
+
+```bash
+# Step 1: Stop the service first
+sudo systemctl stop nessusd
+
+# Step 2: Force plugin update via CLI
+sudo /opt/nessus/sbin/nessuscli update --all
+
+# Step 3: Start the service again
+sudo systemctl start nessusd
+```
+
+**What this does:**
+`nessuscli update --all` bypasses the web UI and directly contacts Tenable's update servers from the command line. It downloads:
+- All vulnerability plugins
+- Plugin feed metadata
+- Scanner engine updates (if available)
+
+**After running, wait 5–10 minutes**, then refresh `https://localhost:8834` and check Settings.
+
+**Verify activation is valid before trying:**
+```bash
+sudo /opt/nessus/sbin/nessuscli fetch --check
+```
+
+Expected output:
+```
+Fetching the newest updates from nessus.org...
+Activation Code: Valid
+```
+
+If activation shows `Invalid` or `Not registered` → re-register via the web UI setup wizard first, then try the update again.
+
+---
+
+### Fix Option 2 — Offline Plugin Update (Best for Lab/No Internet)
+
+When the PC has **no internet access at all**, download the plugin package from a different machine and transfer it manually. This is the most reliable fix in lab environments.
+
+**Step 1 — Download plugin package from an internet-connected machine**
+
+Go to the official Tenable download page:
+```
+https://www.tenable.com/downloads/nessus
+```
+
+Scroll down to find **"Nessus Offline Update"** section. Download the file:
+```
+all-2.0.tar.gz   (or similar name — this is the full plugin bundle)
+```
+
+> File size is typically **200–500 MB** depending on the version.
+
+**Step 2 — Transfer the file to the target machine**
+
+Use a USB drive, `scp`, shared folder (VMware shared folders), or any file transfer method available in your lab.
+
+```bash
+# If transferring via scp from another machine on the same network:
+scp all-2.0.tar.gz kali@<target-ip>:~/Downloads/
+```
+
+**Step 3 — Apply the offline plugin update**
+
+```bash
+# Stop the service
+sudo systemctl stop nessusd
+
+# Apply the plugin package
+sudo /opt/nessus/sbin/nessuscli update ~/Downloads/all-2.0.tar.gz
+
+# Start the service
+sudo systemctl start nessusd
+```
+
+**What this does:**
+`nessuscli update <file>` extracts and installs the plugin bundle directly from the local `.tar.gz` file — no internet needed. Nessus will then compile and index all plugins internally.
+
+**Step 4 — Wait for compilation**
+
+After the command completes, Nessus still needs to compile the plugins in the background. This can take **10–20 minutes**.
+
+Monitor progress from terminal:
+```bash
+sudo tail -f /opt/nessus/var/nessus/logs/nessusd.messages
+```
+
+Look for lines mentioning `plugin compilation` or `plugins loaded` — that means it's working.
+
+**Step 5 — Verify in web UI**
+
+Go to `https://localhost:8834` → **Settings → Overview**
+
+You should now see:
+```
+Plugin Set: XXXXXXXXXX (a timestamp-based number)
+```
+Instead of the "no plugins" warning. ✅
+
+---
+
+> 💡 **Which option to use?**
+> - Machine has internet but GUI update fails → **Try Option 1 first**
+> - Machine has no internet / lab network is restricted → **Use Option 2**
+
+---
+
 ## 🐛 Common Issues & Fixes
 
 | Problem | Likely Cause | Fix |
@@ -249,6 +372,7 @@ sudo tail -f /opt/nessus/var/nessus/logs/nessusd.messages
 | Web UI not loading | Service not started | `sudo systemctl start nessusd` |
 | "Connection refused" error | Wrong port or service down | Verify port with `ss -tulnp \| grep 8834` |
 | SSL error in browser | Self-signed cert | Click "Advanced" → accept the risk |
+| **"Nessus has no plugins"** | **Lab network blocking `plugins.nessus.org`** | **See Plugin Fix section above** |
 | Plugin download stuck | Slow internet / timeout | Wait longer or restart service |
 | Forgot admin password | — | `sudo /opt/nessus/sbin/nessuscli lsuser` then reset |
 | `dpkg` dependency errors | Missing libs | Run `sudo apt --fix-broken install` then retry |
