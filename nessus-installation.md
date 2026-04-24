@@ -359,9 +359,42 @@ Instead of the "no plugins" warning. ✅
 
 ---
 
+### Fix Option 3 — Reset Nessus with `nessusd -R`
+
+This is useful when the plugin state is **corrupted or stuck** — for example, activation went through but plugins never downloaded, or the scanner is in a broken state after a failed update.
+
+`nessusd -R` resets the Nessus installation internally — it clears the current plugin/registration state and forces Nessus to re-register and re-download plugins fresh from Tenable's servers on next start.
+
+```bash
+# Step 1: Stop the running service
+sudo systemctl stop nessusd
+
+# Step 2: Run the reset
+sudo /opt/nessus/sbin/nessusd -R
+
+# Step 3: Start the service again
+sudo systemctl start nessusd
+```
+
+**What `-R` does internally:**
+- Clears the current plugin set and registration state
+- On next start, `nessusd` re-contacts Tenable's servers
+- Re-downloads and recompiles all plugins from scratch
+
+> ⚠️ This is a **destructive reset** — any locally cached plugin data is wiped. Nessus will need to re-download everything, which requires internet access. Do not use this if the machine has no internet — use Option 2 (offline) instead.
+
+**After running, wait 15–30 minutes** for plugin re-download and compilation to complete. Monitor progress:
+
+```bash
+sudo tail -f /opt/nessus/var/nessus/logs/nessusd.messages
+```
+
+---
+
 > 💡 **Which option to use?**
 > - Machine has internet but GUI update fails → **Try Option 1 first**
-> - Machine has no internet / lab network is restricted → **Use Option 2**
+> - Plugin state is corrupted / stuck after failed setup → **Use Option 3 (`-R` reset)**
+> - Machine has no internet / lab network is restricted → **Use Option 2 (offline)**
 
 ---
 
